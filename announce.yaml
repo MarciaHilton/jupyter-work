@@ -1,0 +1,9 @@
+hub:
+  extraConfig:
+    01-announcements: |
+      c.JupyterHub.template_vars = {
+                                   'announcement_login': 'Login announcement text.',
+                                   'announcement_spawn': 'Spawn announcement text.',
+                                   'announcement_home': 'Home announcement text.',
+                                   'announcement_logout': 'Logoout announcement text.'
+                                   }

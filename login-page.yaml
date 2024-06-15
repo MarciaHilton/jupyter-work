@@ -1,0 +1,110 @@
+hub:
+  extraConfig: 
+    00-customSpawner: |
+      import shlex
+      from kubespawner import KubeSpawner
+      class CustomFormSpawner(KubeSpawner):
+          _user_option_keys = {'image','gpu','cpu_guarantee','memory_guarantee','use_ib'}
+          def _options_form_default(self):
+              return f"""
+              <label for="image">Choose an image for {self.user.name}: </label>
+              <select name="image" id="image">
+                <option value="">--Please select an image--
+                </option>
+                <option value="quay.io/jupyterhub/k8s-singleuser-sample:latest">quay.io/jupyterhub/k8s-singleuser-sample:latest</option>
+                <option value="jupyter/minimal-notebook:x86_64-python-3.11.6">jupyter/minimal-notebook:x86_64-python-3.11.6</option>
+              </select>
+             
+              </br></br>
+
+                 <label for='cpu_guarantee'>CPU</label>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                 <input  type="number" value="1" min="1" max="4" step="1" name='cpu_guarantee'></input>
+                 <br/><br/>
+             
+                 <label for='mem_guarantee'>Memory (GB)</label>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                 <input  type="number" value="1" min="1" max="4" step="1" name='mem_guarantee'></input>
+           
+                 <br/><br/>
+           
+                 <label for='use_ib'>Use IB</label>&nbsp;&nbsp;&nbsp;&nbsp;
+                 <span title="If checked then notebook will be spawned with infiniband network'>&#9432;</span>
+                 <span class="checkmark"></span>
+                 <input type="checkbox" name="use_ib"/>
+
+                 <br/><br/>
+
+                 <label for='gpu'>GPU</label>
+                 <span title="If checked then notebook will be spawned on GPU node">&#9432;</span>
+                 <span class="checkmark"></span>
+                 <input type="checkbox" name="gpu">
+                 <br/><br/>
+             
+              """
+             
+          def options_from_form(self, formdata):
+              options = {}
+              print(f"FORMDATA\n{formdata}")
+              options['image'] = formdata.get('image',[''])[0].strip()
+              options['cpu_guarantee'] = formdata.get('cpu_guarantee',[''])[0].strip()
+              options['mem_guarantee'] = formdata.get('mem_guarantee',[''])[0].strip()
+              options['gpu'] = formdata.get('gpu',[''])[0].strip()
+              options['use_ib'] = formdata.get('use_ib',[''])[0].strip()
+              print(f'setting image from options {options}')
+              return options
+
+          @property
+          def image(self):
+              image = 'jupyterhub/k8s-singleuser-sample:latest'
+              if self.user_options.get('image'):
+                  image = self.user_options['image']
+              return image
+
+          @property
+          def cpu_guarantee(self):
+              cpu_guarantee = '500m'
+              if self.user_options.get('cpu_guarantee'):
+                  cpu_guarantee = self.user_options['cpu_guarantee']
+              return cpu_guarantee
+
+          @property
+          def cpu_limit(self):
+              cpulimit = '500m'
+              if self.user_options.get('cpu_guarantee'):
+                  cpulimit = self.user_options['cpu_guarantee']
+              return cpulimit
+
+          @property
+          def mem_guarantee(self):
+              mem = '1073741824'
+              if self.user_options.get('mem_guarantee'):
+                  mem = self.user_options['mem_guarantee']
+                  converted_mem = int(mem)
+                  converted_mem = converted_mem * 1073741824
+                  mem = str(converted_mem)
+              return mem
+
+          @property
+          def mem_limit(self):
+              meml = '1073741824'
+              if self.user_options.get('mem_guarantee'):
+                  meml = self.user_options['mem_guarantee']
+                  converted_meml = int(meml)
+                  converted_meml = converted_meml * 1073741824
+                  meml = str(converted_meml)
+              return meml
+
+          @property
+          def node_selector(self):
+              node_selector = {"kuberetes.io/hostname": "nodeWithoutGpu"}
+              if self.user_options.get('gpu'):
+                  node_selector = {"kuberetes.io/hostname": "nodeWithGpu"}
+              print(f' pretend setting node_selector to {node_selector}')
+              # no real nodes so default to only node
+              node_selector = {"kubernetes.io/hostname": "minikube"}
+              return node_selector
+
+
+      #c = get_config() #noqa
+      c.JupyterHub.spawner_class = CustomFormSpawner
+
+        
