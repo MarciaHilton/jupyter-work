@@ -1,0 +1,139 @@
+hub:
+  extraFiles:
+    announcment-template:
+      mountPath: /opt/templates/page.html
+      stringData: |
+        {% extends "templates/page.html" %}
+          {% block announcement %}
+            <div class="container text-center announcement"></div>
+          {% endblock announcement %}
+          {% block script %}
+            {{ super() }}
+            <script>
+              $.get("/services/announcement/", function(data) {
+                $(".announcement").html(data["announcement"]);
+              });
+            </script>
+          {% endblock script %}
+    announcement:
+      mountPath: /usr/local/etc/jupyterhub/jupyterhub_config.d/announcement.py
+      mode: 0755
+      stringData: |
+
+        import argparse
+        import datetime
+        import json
+        import os
+        
+        from tornado import escape, ioloop, web
+        
+        from jupyterhub.services.auth import HubAuthenticated
+        
+        class AnnouncementRequestHandler(HubAuthenticated, web.RequestHandler):
+            """Dynamically manage page announcements"""
+        
+            def initialize(self, storage):
+                """Create storage for announcement text"""
+                self.storage = storage
+        
+            @web.authenticated
+            def post(self):
+                """Update announcement"""
+                user = self.get_current_user()
+                doc = escape.json_decode(self.request.body)
+                self.storage["announcement"] = doc["announcement"]
+                self.storage["timestamp"] = datetime.datetime.now().isoformat()
+                self.storage["user"] = user["name"]
+                self.write_to_json(self.storage)
+        
+            def get(self):
+                """Retrieve announcement"""
+                self.write_to_json(self.storage)
+        
+            @web.authenticated
+            def delete(self):
+                """Clear announcement"""
+                self.storage["announcement"] = ""
+                self.write_to_json(self.storage)
+        
+            def write_to_json(self, doc):
+                """Write dictionary document as JSON"""
+                self.set_header("Content-Type", "application/json; charset=UTF-8")
+                self.write(escape.utf8(json.dumps(doc)))
+        
+        
+        def main():
+            args = parse_arguments()
+            application = create_application(**vars(args))
+            application.listen(args.port)
+            ioloop.IOLoop.current().start()
+        
+        
+        def parse_arguments():
+            parser = argparse.ArgumentParser()
+            parser.add_argument(
+                "--api-prefix",
+                "-a",
+                default=os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "/"),
+                help="application API prefix",
+            )
+            parser.add_argument(
+                "--port", "-p", default=8888, help="port for API to listen on", type=int
+            )
+            return parser.parse_args()
+        
+        
+        def create_application(api_prefix="/", handler=AnnouncementRequestHandler, **kwargs):
+            storage = dict(announcement="", timestamp="", user="")
+            return web.Application([(api_prefix, handler, dict(storage=storage))])
+        
+        
+        if __name__ == "__main__":
+            main()
+  templatePaths:
+    - /usr/local/share/jupyterhub/templates
+    - /opt/templates
+
+  services:
+    announcement:
+      url: http://hub:8181
+      command: 
+        - /usr/local/bin/python3
+        - /usr/local/etc/jupyterhub/jupyterhub_config.d/announcement.py
+        - --port
+        - "8181"
+     
+
+  networkPolicy:
+    ingress: 
+      - ports:
+        - port: 8181
+        from:
+          - podSelector:
+              matchLabels:
+                hub.jupyter.org/network-access-hub: "true"
+
+  service:
+    extraPorts:
+      - port: 8181
+        target_port: 8181
+        name: announcement
+
+  loadRoles:
+    announcers:
+      users: ["marcia"]
+      services: ["announcement"]
+      scopes: ["access:services!service=announcement"]
+
+proxy:
+  chp:
+    networkPolicy:
+      egress:
+        - to:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: jupyterhub
+                app.kubernetes.io/component: hub
+          ports:
+            - port: 8181
+
